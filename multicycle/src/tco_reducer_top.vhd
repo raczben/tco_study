@@ -1,5 +1,3 @@
-
-
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 
@@ -23,20 +21,6 @@ entity tco_reducer_top is
     -- Outputs using different method to met timing
     --
     
-    -- Native output doesn't uses any "magic" it just a simple output. (Therefore) it *fails* the
-    -- timing requirements.
-    o_native_p          : out std_logic;
-    o_native_n          : out std_logic;
-    
-    -- DDR output: I hoped that DDR output can be faster than simple outputs, but it *fails* too.
-    o_ddr_p             : out std_logic;
-    o_ddr_n             : out std_logic;
-    
-    -- IOB: uses `set_property IOB TRUE` in the implementation constraint file. It is *fails* also
-    -- because it is not fast enough either. (However it has better timing values.)
-    o_iob_p             : out std_logic;
-    o_iob_n             : out std_logic;
-    
     -- IOB with shifted clock (and multicycle path): There is a phase-shifted clock, which move the
     -- datavalid window to a given time. This PASS the timing.
     o_iob_shifted_clk_p : out std_logic;
@@ -50,8 +34,8 @@ entity tco_reducer_top is
     -- Odelay with inverted clock (and multicycle path): This output uses inverted clock at the last
     -- FF then it applies odelay with fixed delay value to shift the data valid window to a given
     -- time. Notice, that this is a combined variant of the shifted clock (180 deg) and the odelay.
-    o_odelay_clk_n_p    : out std_logic;
-    o_odelay_clk_n_n    : out std_logic
+    o_odelay_nclk_p     : out std_logic;
+    o_odelay_nclk_n     : out std_logic
   );
 end tco_reducer_top;
 
@@ -61,25 +45,21 @@ architecture behavioral of tco_reducer_top is
   signal q_cntr                 : unsigned(15 downto 0);
   
   -- Two registers for all outputs to improve timing
-  signal q_native_d1            : std_logic;
-  signal q_native_d2            : std_logic;
-  signal q_ddr_d1               : std_logic;
-  signal q_ddr_d2               : std_logic;
-  signal q_iob_d1               : std_logic;
-  signal q_iob_d2               : std_logic;
   signal q_iob_shifted_clk_d1   : std_logic;
   signal q_iob_shifted_clk_d2   : std_logic;
   signal q_odelay_d1            : std_logic;
   signal q_odelay_d2            : std_logic;
-  signal q_odelay_clk_n_d1      : std_logic;
-  signal q_odelay_clk_n_d2      : std_logic;
+  signal q_odelay_nclk_d1       : std_logic;
+  signal q_odelay_nclk_d2       : std_logic;
   
+  signal q_rst_d1                : std_logic;
   signal w_odelay               : std_logic;
   signal w_ddr                  : std_logic;
   signal w_odelay_01            : std_logic;
   signal w_odelay_03            : std_logic;
   signal w_odelay_casc_01       : std_logic;
   signal w_odelay_casc_02       : std_logic;
+  signal w_odelay_nclk          : std_logic;
   
   signal w_clk                  : std_logic;
   signal w_clk_n                : std_logic;
@@ -110,14 +90,17 @@ begin
     end if;  -- rising_edge(w_clk)
   end process proc_counter;
   
+  -- Reset timing release
+  proc_rst: process(w_clk) begin
+    if rising_edge(w_clk) then
+      q_rst_d1 <= i_rst;
+    end if;
+  end process proc_rst;
   
   -- Each output is a bit of the counter.
   proc_cntr_to_data: process(w_clk) begin
     if rising_edge(w_clk) then
       -- Use different outputs to preserve optimization
-      q_native_d1           <= q_cntr(15);
-      q_iob_d1              <= q_cntr(14);
-      q_ddr_d1              <= q_cntr(13);
       q_iob_shifted_clk_d1  <= q_cntr(12);
       q_odelay_d1           <= q_cntr(11);
     end if;
@@ -127,9 +110,6 @@ begin
   -- A second FF is used improve timing. (Note that shifted output is not in this process.)
   proc_d2: process(w_clk) begin
     if rising_edge(w_clk) then
-      q_native_d2           <= q_native_d1;
-      q_iob_d2              <= q_iob_d1;
-      q_ddr_d2              <= q_ddr_d1;
       q_odelay_d2           <= q_odelay_d1;
     end if;
   end process proc_d2;
@@ -138,7 +118,7 @@ begin
   -- A second FF is used improve timing. (inverted clock.)
   proc_d2_inverted: process(w_clk_n) begin
     if rising_edge(w_clk_n) then
-      q_odelay_clk_n_d2     <= q_odelay_clk_n_d1;
+      q_odelay_nclk_d2     <= q_odelay_nclk_d1;
     end if;
   end process proc_d2_inverted;
   
@@ -169,8 +149,40 @@ begin
   port map (
     RDY => open,       -- 1-bit output: Ready output
     REFCLK => w_clk_300, -- 1-bit input: Reference clock input
-    RST => '0'        -- 1-bit input: Active high reset input. Asynchronous assert, synchronous deassert to
+    RST => q_rst_d1      -- 1-bit input: Active high reset input. Asynchronous assert, synchronous deassert to
                       -- REFCLK.
+  );
+  
+
+  -- Odelay chain
+  ODELAYE3_nclk_inst : ODELAYE3
+  generic map (
+    CASCADE         => "NONE",    -- Cascade setting (MASTER, NONE, SLAVE_END, SLAVE_MIDDLE)
+    DELAY_FORMAT    => "TIME",      -- (COUNT, TIME)
+    DELAY_TYPE      => "FIXED",     -- Set the type of tap delay line (FIXED, VARIABLE, VAR_LOAD)
+    DELAY_VALUE     => 1250,        -- Output delay tap setting
+    IS_CLK_INVERTED => '0',         -- Optional inversion for CLK
+    IS_RST_INVERTED => '0',         -- Optional inversion for RST
+    REFCLK_FREQUENCY=> 300.0,       -- IDELAYCTRL clock input frequency in MHz (200.0-2667.0).
+    SIM_DEVICE      => "ULTRASCALE", -- Set the device version (ULTRASCALE, ULTRASCALE_PLUS, ULTRASCALE_PLUS_ES1,
+                                    -- ULTRASCALE_PLUS_ES2)
+    UPDATE_MODE     => "ASYNC"      -- Determines when updates to the delay will take effect (ASYNC, MANUAL,
+                                    -- SYNC)
+  )
+  port map (
+    CASC_OUT        => open, -- 1-bit output: Cascade delay output to IDELAY input cascade
+    CNTVALUEOUT     => open,        -- 9-bit output: Counter value output
+    DATAOUT         => w_odelay_nclk,    -- 1-bit output: Delayed data from ODATAIN input port
+    CASC_IN         => '0',         -- 1-bit input: Cascade delay input from slave IDELAY CASCADE_OUT
+    CASC_RETURN     => '0', -- 1-bit input: Cascade delay returning from slave IDELAY DATAOUT
+    CE              => '0',         -- 1-bit input: Active high enable increment/decrement input
+    CLK             => w_clk_300,   -- 1-bit input: Clock input
+    CNTVALUEIN      => "000000000", -- 9-bit input: Counter value input
+    EN_VTC          => '1',         -- 1-bit input: Keep delay constant over VT
+    INC             => '0',         -- 1-bit input: Increment/Decrement tap delay input
+    LOAD            => '0',         -- 1-bit input: Load DELAY_VALUE input
+    ODATAIN         => q_odelay_nclk_d2, -- 1-bit input: Data input
+    RST             => '0'          -- 1-bit input: Asynchronous Reset to the DELAY_VALUE
   );
   
 
@@ -195,7 +207,7 @@ begin
     DATAOUT         => w_odelay,    -- 1-bit output: Delayed data from ODATAIN input port
     CASC_IN         => '0',         -- 1-bit input: Cascade delay input from slave IDELAY CASCADE_OUT
     CASC_RETURN     => w_odelay_01, -- 1-bit input: Cascade delay returning from slave IDELAY DATAOUT
-    CE              => '1',         -- 1-bit input: Active high enable increment/decrement input
+    CE              => '0',         -- 1-bit input: Active high enable increment/decrement input
     CLK             => w_clk_300,   -- 1-bit input: Clock input
     CNTVALUEIN      => "000000000", -- 9-bit input: Counter value input
     EN_VTC          => '1',         -- 1-bit input: Keep delay constant over VT
@@ -227,7 +239,7 @@ begin
     DATAOUT         => w_odelay_01, -- 1-bit output: Delayed data output
     CASC_IN         => w_odelay_casc_01,    -- 1-bit input: Cascade delay input from slave ODELAY CASCADE_OUT
     CASC_RETURN     => w_odelay_03, -- 1-bit input: Cascade delay returning from slave ODELAY DATAOUT
-    CE              => '1',         -- 1-bit input: Active high enable increment/decrement input
+    CE              => '0',         -- 1-bit input: Active high enable increment/decrement input
     CLK             => w_clk_300,   -- 1-bit input: Clock input
     CNTVALUEIN      => "000000000", -- 9-bit input: Counter value input
     DATAIN          => '0',         -- 1-bit input: Data input from the logic
@@ -235,7 +247,7 @@ begin
     IDATAIN         => '0',         -- 1-bit input: Data input from the IOBUF
     INC             => '0',         -- 1-bit input: Increment / Decrement tap delay input
     LOAD            => '0',         -- 1-bit input: Load DELAY_VALUE input
-    RST             => '0'          -- 1-bit input: Asynchronous Reset to the DELAY_VALUE
+    RST             => i_rst          -- 1-bit input: Asynchronous Reset to the DELAY_VALUE
   );
 
    
@@ -260,14 +272,14 @@ begin
     DATAOUT         => w_odelay_03,    -- 1-bit output: Delayed data from ODATAIN input port
     CASC_IN         => w_odelay_casc_02,         -- 1-bit input: Cascade delay input from slave IDELAY CASCADE_OUT
     CASC_RETURN     => '0',         -- 1-bit input: Cascade delay returning from slave IDELAY DATAOUT
-    CE              => '1',         -- 1-bit input: Active high enable increment/decrement input
+    CE              => '0',         -- 1-bit input: Active high enable increment/decrement input
     CLK             => w_clk_300,   -- 1-bit input: Clock input
     CNTVALUEIN      => "000000000", -- 9-bit input: Counter value input
     EN_VTC          => '1',         -- 1-bit input: Keep delay constant over VT
     INC             => '0',         -- 1-bit input: Increment/Decrement tap delay input
     LOAD            => '0',         -- 1-bit input: Load DELAY_VALUE input
     ODATAIN         => '0',         -- 1-bit input: Data input
-    RST             => '0'          -- 1-bit input: Asynchronous Reset to the DELAY_VALUE
+    RST             => i_rst          -- 1-bit input: Asynchronous Reset to the DELAY_VALUE
   );
   
   
@@ -282,21 +294,6 @@ begin
     CE  => '1',         -- 1-bit input: Buffer enable
     I   => w_clk        -- 1-bit input: Buffer
   );
-  
-  
-  ODDRE1_inst : ODDRE1
-  generic map (
-    IS_C_INVERTED => '0',  -- Optional inversion for C
-    SRVAL => '0'           -- Initializes the ODDRE1 Flip-Flops to the specified value ('0', '1')
-  )
-  port map (
-    Q => w_ddr,   -- 1-bit output: Data output to IOB
-    C => w_clk,   -- 1-bit input: High-speed clock input
-    D1 => q_ddr_d2, -- 1-bit input: Parallel data input 1
-    D2 => q_ddr_d2, -- 1-bit input: Parallel data input 2
-    SR => '0'  -- 1-bit input: Active High Async Reset
-  ); 
-    
     
   inst_clk_ibufds : IBUFDS
   generic map(
@@ -311,28 +308,6 @@ begin
   --
   -- LVDS output buffers for different ouputs:
   --
-  
-  -- Native
-  inst_native_obufds : OBUFDS
-  generic map(
-    IOSTANDARD => "LVDS"
-  )
-  port map(
-    O  => o_native_p,
-    OB => o_native_n,
-    I  => q_native_d2
-  );
-    
-  -- IOB (simple)
-  inst_iob_obufds : OBUFDS
-  generic map(
-    IOSTANDARD => "LVDS"
-  )
-  port map(
-    O  => o_iob_p,
-    OB => o_iob_n,
-    I  => q_iob_d2
-  );
     
   -- IOB with shifted clock
   inst_iob_shifted_obufds : OBUFDS
@@ -357,25 +332,14 @@ begin
   );
   
   -- odelay with inverted clock
-  inst_odelay_clk_n_obufds : OBUFDS
+  inst_odelay_nclk_obufds : OBUFDS
   generic map(
     IOSTANDARD => "LVDS"
   )
   port map(
-    O  => o_odelay_clk_n_p,
-    OB => o_odelay_clk_n_n,
-    I  => q_odelay_clk_n_d2
+    O  => o_odelay_nclk_p,
+    OB => o_odelay_nclk_n,
+    I  => w_odelay_nclk
   );
     
-  -- DDR
-  inst_ddr_obufds : OBUFDS
-  generic map(
-    IOSTANDARD => "LVDS"
-  )
-  port map(
-    O  => o_ddr_p,
-    OB => o_ddr_n,
-    I  => w_ddr
-  );
-
 end behavioral;

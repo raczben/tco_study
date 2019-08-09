@@ -1,0 +1,8 @@
+
+# Ignore the projects
+singlecycle/tco_reducer_sc/*
+multicycle/tco_reducer_mc/*
+
+# ignore generated ip files
+multicycle/src/clk_wiz_trigger/*
+!multicycle/src/clk_wiz_trigger/clk_wiz_trigger.xci

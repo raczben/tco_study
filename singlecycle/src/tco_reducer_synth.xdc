@@ -21,14 +21,17 @@ set BD_trigger_M 7.0
 
 # odelay_M = 8.0
 # odelay_m = 3.0
-set odelay_M [expr $CLK_fpga_max + $tSUb + $BD_trigger_max - $CLK_daq_min]
-set odelay_m [expr $CLK_fpga_min - $tHb  + $BD_trigger_min - $CLK_daq_max]
+set odelay_M [expr $CLK_fpga_M + $tSUb + $BD_trigger_M - $CLK_daq_m]
+set odelay_m [expr $CLK_fpga_m - $tHb  + $BD_trigger_m - $CLK_daq_M]
 
 #create the output maximum delay for the data output from the
 #FPGA that accounts for all delays specified (tSUb + 6.045)
-set_output_delay -clock clkB_virt \-max [expr $odelay_M] [get_ports {o_native* o_iob*}]
-set_output_delay -clock clkB_virt \-max [expr $odelay_M -5] [get_ports {o_ddr*}]
+set_output_delay -clock clkB_virt -max [expr $odelay_M] [get_ports {o_native* o_iob*}]
+set_output_delay -clock clkB_virt -max [expr $odelay_M -5] [get_ports {o_ddr*}]
 #create the output minimum delay for the data output from the
 #FPGA that accounts for all delays specified (tHb + 3.992)
-set_output_delay -clock clkB_virt \-min [expr $odelay_m] [get_ports {o_native* o_iob*}]
-set_output_delay -clock clkB_virt \-min [expr $odelay_m - 5] [get_ports {o_ddr*}]
+set_output_delay -clock clkB_virt -min [expr $odelay_m] [get_ports {o_native* o_iob*}]
+set_output_delay -clock clkB_virt -min [expr $odelay_m - 5] [get_ports {o_ddr*}]
+
+# reset
+set_input_delay -clock clkB_virt 1 [get_ports i_rst]

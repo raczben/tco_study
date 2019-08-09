@@ -1,0 +1,12 @@
+{signal: [
+  {name: 'clk', wave: '0..1...0...1..',  node: '.../.......l'},
+  {name: 'odelay',                       node: '.1.2.3.....4'},
+  {name: 'data', wave: 'x=...x........', node: '.x...y......', data: ["valid*"] },
+
+],
+edge: [
+    '2->1 min', '4->3 MAX', '1-x', '/-2', '3-y', 'l-4'
+],
+foot: {text:
+  ['tspan', '*Required data valid window on FPGA pad.']
+}}

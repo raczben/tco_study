@@ -21,6 +21,10 @@ entity tco_reducer_top is
     -- Outputs using different method to met timing
     --
     
+    -- Native multicycle, lets see if the router can solve itself... No... it will fails.
+    o_native_mc_p       : out std_logic;
+    o_native_mc_n       : out std_logic;
+    
     -- IOB with shifted clock (and multicycle path): There is a phase-shifted clock, which move the
     -- datavalid window to a given time. This PASS the timing.
     o_iob_shifted_clk_p : out std_logic;
@@ -45,6 +49,8 @@ architecture behavioral of tco_reducer_top is
   signal q_cntr                 : unsigned(15 downto 0);
   
   -- Two registers for all outputs to improve timing
+  signal q_native_mc_d1         : std_logic;
+  signal q_native_mc_d2         : std_logic;
   signal q_iob_shifted_clk_d1   : std_logic;
   signal q_iob_shifted_clk_d2   : std_logic;
   signal q_odelay_d1            : std_logic;
@@ -52,7 +58,9 @@ architecture behavioral of tco_reducer_top is
   signal q_odelay_nclk_d1       : std_logic;
   signal q_odelay_nclk_d2       : std_logic;
   
-  signal q_rst_d1                : std_logic;
+  signal q_rst_d1               : std_logic;
+  signal q_rst_250              : std_logic;
+  signal q_rst_250_d1           : std_logic;
   signal w_odelay               : std_logic;
   signal w_ddr                  : std_logic;
   signal w_odelay_01            : std_logic;
@@ -64,18 +72,25 @@ architecture behavioral of tco_reducer_top is
   signal w_clk                  : std_logic;
   signal w_clk_n                : std_logic;
   signal w_clk_shifted          : std_logic;
-  signal w_clk_300              : std_logic;
+  signal w_clk_250              : std_logic;
   
   
   component clk_wiz_trigger
   port (
     o_clk_100_shifted   : out    std_logic;
-    o_clk_300           : out    std_logic;
     -- Status and control signals
     locked              : out    std_logic;
     clk_in1             : in     std_logic
    );
   end component;
+  
+  component clk_wiz_0
+  port (
+    o_clk_250           : out    std_logic;
+    clk_in1             : in     std_logic
+  );
+  
+end component;
   
 begin
   
@@ -97,12 +112,22 @@ begin
     end if;
   end process proc_rst;
   
+  -- Reset timing release
+  proc_rst_250: process(w_clk_250) begin
+    if rising_edge(w_clk_250) then
+      q_rst_250     <= q_rst_d1;
+      q_rst_250_d1  <= q_rst_250;
+    end if;
+  end process proc_rst_250;
+  
   -- Each output is a bit of the counter.
   proc_cntr_to_data: process(w_clk) begin
     if rising_edge(w_clk) then
       -- Use different outputs to preserve optimization
+      q_native_mc_d1        <= q_cntr(13);
       q_iob_shifted_clk_d1  <= q_cntr(12);
       q_odelay_d1           <= q_cntr(11);
+      q_odelay_nclk_d1      <= q_cntr(10);
     end if;
   end process proc_cntr_to_data;
   
@@ -110,6 +135,7 @@ begin
   -- A second FF is used improve timing. (Note that shifted output is not in this process.)
   proc_d2: process(w_clk) begin
     if rising_edge(w_clk) then
+      q_native_mc_d2        <= q_native_mc_d1;
       q_odelay_d2           <= q_odelay_d1;
     end if;
   end process proc_d2;
@@ -135,11 +161,18 @@ begin
   port map ( 
     -- Clock out ports  
     o_clk_100_shifted   => w_clk_shifted,
-    o_clk_300           => w_clk_300,
     -- Status and control signals                
     locked          => open,
     -- Clock in ports
     clk_in1         => w_clk
+  );
+  
+  inst_clk_wiz_0 : clk_wiz_0
+    port map ( 
+    -- Clock out ports  
+    o_clk_250 => w_clk_250,
+    -- Clock in ports
+    clk_in1 => w_clk
   );
   
   IDELAYCTRL_inst : IDELAYCTRL
@@ -148,8 +181,8 @@ begin
   )
   port map (
     RDY => open,       -- 1-bit output: Ready output
-    REFCLK => w_clk_300, -- 1-bit input: Reference clock input
-    RST => q_rst_d1      -- 1-bit input: Active high reset input. Asynchronous assert, synchronous deassert to
+    REFCLK => w_clk_250, -- 1-bit input: Reference clock input
+    RST => q_rst_250_d1    -- 1-bit input: Active high reset input. Asynchronous assert, synchronous deassert to
                       -- REFCLK.
   );
   
@@ -160,10 +193,10 @@ begin
     CASCADE         => "NONE",    -- Cascade setting (MASTER, NONE, SLAVE_END, SLAVE_MIDDLE)
     DELAY_FORMAT    => "TIME",      -- (COUNT, TIME)
     DELAY_TYPE      => "FIXED",     -- Set the type of tap delay line (FIXED, VARIABLE, VAR_LOAD)
-    DELAY_VALUE     => 1250,        -- Output delay tap setting
+    DELAY_VALUE     => 800,        -- Output delay tap setting
     IS_CLK_INVERTED => '0',         -- Optional inversion for CLK
     IS_RST_INVERTED => '0',         -- Optional inversion for RST
-    REFCLK_FREQUENCY=> 300.0,       -- IDELAYCTRL clock input frequency in MHz (200.0-2667.0).
+    REFCLK_FREQUENCY=> 250.0,       -- IDELAYCTRL clock input frequency in MHz (200.0-2667.0).
     SIM_DEVICE      => "ULTRASCALE", -- Set the device version (ULTRASCALE, ULTRASCALE_PLUS, ULTRASCALE_PLUS_ES1,
                                     -- ULTRASCALE_PLUS_ES2)
     UPDATE_MODE     => "ASYNC"      -- Determines when updates to the delay will take effect (ASYNC, MANUAL,
@@ -176,7 +209,7 @@ begin
     CASC_IN         => '0',         -- 1-bit input: Cascade delay input from slave IDELAY CASCADE_OUT
     CASC_RETURN     => '0', -- 1-bit input: Cascade delay returning from slave IDELAY DATAOUT
     CE              => '0',         -- 1-bit input: Active high enable increment/decrement input
-    CLK             => w_clk_300,   -- 1-bit input: Clock input
+    CLK             => w_clk_250,   -- 1-bit input: Clock input
     CNTVALUEIN      => "000000000", -- 9-bit input: Counter value input
     EN_VTC          => '1',         -- 1-bit input: Keep delay constant over VT
     INC             => '0',         -- 1-bit input: Increment/Decrement tap delay input
@@ -192,10 +225,10 @@ begin
     CASCADE         => "MASTER",    -- Cascade setting (MASTER, NONE, SLAVE_END, SLAVE_MIDDLE)
     DELAY_FORMAT    => "TIME",      -- (COUNT, TIME)
     DELAY_TYPE      => "FIXED",     -- Set the type of tap delay line (FIXED, VARIABLE, VAR_LOAD)
-    DELAY_VALUE     => 1250,        -- Output delay tap setting
+    DELAY_VALUE     => 1000,        -- Output delay tap setting
     IS_CLK_INVERTED => '0',         -- Optional inversion for CLK
     IS_RST_INVERTED => '0',         -- Optional inversion for RST
-    REFCLK_FREQUENCY=> 300.0,       -- IDELAYCTRL clock input frequency in MHz (200.0-2667.0).
+    REFCLK_FREQUENCY=> 250.0,       -- IDELAYCTRL clock input frequency in MHz (200.0-2667.0).
     SIM_DEVICE      => "ULTRASCALE", -- Set the device version (ULTRASCALE, ULTRASCALE_PLUS, ULTRASCALE_PLUS_ES1,
                                     -- ULTRASCALE_PLUS_ES2)
     UPDATE_MODE     => "ASYNC"      -- Determines when updates to the delay will take effect (ASYNC, MANUAL,
@@ -208,7 +241,7 @@ begin
     CASC_IN         => '0',         -- 1-bit input: Cascade delay input from slave IDELAY CASCADE_OUT
     CASC_RETURN     => w_odelay_01, -- 1-bit input: Cascade delay returning from slave IDELAY DATAOUT
     CE              => '0',         -- 1-bit input: Active high enable increment/decrement input
-    CLK             => w_clk_300,   -- 1-bit input: Clock input
+    CLK             => w_clk_250,   -- 1-bit input: Clock input
     CNTVALUEIN      => "000000000", -- 9-bit input: Counter value input
     EN_VTC          => '1',         -- 1-bit input: Keep delay constant over VT
     INC             => '0',         -- 1-bit input: Increment/Decrement tap delay input
@@ -227,7 +260,7 @@ begin
     DELAY_VALUE     => 1250,           -- Input delay value setting
     IS_CLK_INVERTED => '0',         -- Optional inversion for CLK
     IS_RST_INVERTED => '0',         -- Optional inversion for RST
-    REFCLK_FREQUENCY=> 300.0,       -- IDELAYCTRL clock input frequency in MHz (200.0-2667.0)
+    REFCLK_FREQUENCY=> 250.0,       -- IDELAYCTRL clock input frequency in MHz (200.0-2667.0)
     SIM_DEVICE      => "ULTRASCALE", -- Set the device version (ULTRASCALE, ULTRASCALE_PLUS, ULTRASCALE_PLUS_ES1,
                                     -- ULTRASCALE_PLUS_ES2)
     UPDATE_MODE     => "ASYNC"      -- Determines when updates to the delay will take effect (ASYNC, MANUAL,
@@ -240,14 +273,14 @@ begin
     CASC_IN         => w_odelay_casc_01,    -- 1-bit input: Cascade delay input from slave ODELAY CASCADE_OUT
     CASC_RETURN     => w_odelay_03, -- 1-bit input: Cascade delay returning from slave ODELAY DATAOUT
     CE              => '0',         -- 1-bit input: Active high enable increment/decrement input
-    CLK             => w_clk_300,   -- 1-bit input: Clock input
+    CLK             => w_clk_250,   -- 1-bit input: Clock input
     CNTVALUEIN      => "000000000", -- 9-bit input: Counter value input
     DATAIN          => '0',         -- 1-bit input: Data input from the logic
     EN_VTC          => '1',         -- 1-bit input: Keep delay constant over VT
     IDATAIN         => '0',         -- 1-bit input: Data input from the IOBUF
     INC             => '0',         -- 1-bit input: Increment / Decrement tap delay input
     LOAD            => '0',         -- 1-bit input: Load DELAY_VALUE input
-    RST             => i_rst          -- 1-bit input: Asynchronous Reset to the DELAY_VALUE
+    RST             => '0'          -- 1-bit input: Asynchronous Reset to the DELAY_VALUE
   );
 
    
@@ -260,7 +293,7 @@ begin
     DELAY_VALUE     => 1250,        -- Output delay tap setting
     IS_CLK_INVERTED => '0',         -- Optional inversion for CLK
     IS_RST_INVERTED => '0',         -- Optional inversion for RST
-    REFCLK_FREQUENCY=> 300.0,       -- IDELAYCTRL clock input frequency in MHz (200.0-2667.0).
+    REFCLK_FREQUENCY=> 250.0,       -- IDELAYCTRL clock input frequency in MHz (200.0-2667.0).
     SIM_DEVICE      => "ULTRASCALE", -- Set the device version (ULTRASCALE, ULTRASCALE_PLUS, ULTRASCALE_PLUS_ES1,
                                     -- ULTRASCALE_PLUS_ES2)
     UPDATE_MODE     => "ASYNC"      -- Determines when updates to the delay will take effect (ASYNC, MANUAL,
@@ -273,13 +306,13 @@ begin
     CASC_IN         => w_odelay_casc_02,         -- 1-bit input: Cascade delay input from slave IDELAY CASCADE_OUT
     CASC_RETURN     => '0',         -- 1-bit input: Cascade delay returning from slave IDELAY DATAOUT
     CE              => '0',         -- 1-bit input: Active high enable increment/decrement input
-    CLK             => w_clk_300,   -- 1-bit input: Clock input
+    CLK             => w_clk_250,   -- 1-bit input: Clock input
     CNTVALUEIN      => "000000000", -- 9-bit input: Counter value input
     EN_VTC          => '1',         -- 1-bit input: Keep delay constant over VT
     INC             => '0',         -- 1-bit input: Increment/Decrement tap delay input
     LOAD            => '0',         -- 1-bit input: Load DELAY_VALUE input
     ODATAIN         => '0',         -- 1-bit input: Data input
-    RST             => i_rst          -- 1-bit input: Asynchronous Reset to the DELAY_VALUE
+    RST             => '0'          -- 1-bit input: Asynchronous Reset to the DELAY_VALUE
   );
   
   
@@ -309,6 +342,17 @@ begin
   -- LVDS output buffers for different ouputs:
   --
     
+  -- NAtive multicycle (fails)
+  inst_native_mc_obufds : OBUFDS
+  generic map(
+    IOSTANDARD => "LVDS"
+  )
+  port map(
+    O  => o_native_mc_p,
+    OB => o_native_mc_n,
+    I  => q_native_mc_d2
+  );
+  
   -- IOB with shifted clock
   inst_iob_shifted_obufds : OBUFDS
   generic map(

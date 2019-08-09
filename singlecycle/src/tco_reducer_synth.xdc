@@ -31,7 +31,7 @@ set_output_delay -clock clkB_virt -max [expr $odelay_M -5] [get_ports {o_ddr*}]
 #create the output minimum delay for the data output from the
 #FPGA that accounts for all delays specified (tHb + 3.992)
 set_output_delay -clock clkB_virt -min [expr $odelay_m] [get_ports {o_native* o_iob*}]
-set_output_delay -clock clkB_virt -min [expr $odelay_m - 5] [get_ports {o_ddr*}]
+set_output_delay -clock clkB_virt -min [expr $odelay_m] [get_ports {o_ddr*}]
 
 # reset
 set_input_delay -clock clkB_virt 1 [get_ports i_rst]

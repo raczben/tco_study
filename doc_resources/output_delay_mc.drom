@@ -1,11 +1,12 @@
 {signal: [
-  {name: 'clk', wave: '01...0...1...0...1.',  node: '.a......./.......l'},
-  {name: 'odelay',                            node: '.......1.2.3.....4'},
-  {name: 'data', wave: 'x......=...x.......', node: '.......x...y......', data: ["valid*"] },
+  {name: 'clk', wave: '01...0...1...0...1.',  node: '.a.............../'},
+  {name: 'odelay_M',                          node: '.........2.q.....p'},
+  {name: 'odelay_m',                          node: '...............1.2'},
+  {name: 'data', wave: 'x..........=...x...', node: '...........x...y..', data: ["valid*"] },
 
 ],
 edge: [
-    'a~->x multicycle datapath', 'a~>y', '2->1 min', '4->3 MAX', '1-x', '/-2', '3-y', 'l-4'
+    'a~->x multicycle datapath', 'a~>y', '2->1 min', 'p->q MAX', 'q-x', '/-2', '3-y', 'l-4'
 ],
 foot: {text:
   ['tspan', '*Required data valid window on FPGA pad.']

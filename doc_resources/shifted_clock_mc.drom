@@ -1,0 +1,13 @@
+{signal: [
+  {name: 'external_clk', wave: '01...0...1...0...1.', node: '.a.............../'},
+  {name: 'odelay_M',                                  node: '...........q.....p'},
+  {name: 'odelay_m',                                  node: '...............1.2'},
+  {name: 'data',         wave: 'x..........=...x...', node: '...............k..', data: ["valid*"] },
+  {name: '',                                          node: '.b....g....i......'},
+  {name: 'output_clk',   wave: '1.0...1...0...1...0', node: '......e...........'},
+
+],
+edge: [
+    '2->1 min', 'p->q MAX', '/-2', '1-k', 'g-e', 'a-b', 'b->g clock_shift', 'q-i', 'g->i tco'
+]
+}

@@ -6,3 +6,6 @@ multicycle/tco_reducer_mc/*
 # ignore generated ip files
 multicycle/src/clk_wiz_trigger/*
 !multicycle/src/clk_wiz_trigger/clk_wiz_trigger.xci
+
+multicycle/src/clk_wiz_0/*
+!multicycle/src/clk_wiz_0/clk_wiz_0.xci

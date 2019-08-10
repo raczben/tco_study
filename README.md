@@ -239,7 +239,7 @@ details open project from the [multicycle](multicycle) directory.
 
 Ok, the compiler cannot route as fast as required, but maybe it can solve this multicycle path
 problem. So let's just implement a simple register, and connect to output port, with the multicycle
-constraint. This idea implemented by the `o_native_mc_p` ports.
+constraint. This idea implemented by the `o_native_mc_p` (/n) ports.
 
 After a longer compiling the timing fails in this case too.
 What happened? The compiler tried to use general routing resources to add delay to match the
@@ -275,9 +275,16 @@ with three cascaded `ODELAYE3` primitive.
 
 ### Using phase shifted clock
 
+`o_iob_shifted_clk_p` met the timing by adjusting the clock of the last flip-flop. This technik
+quasi adds extra delay to the clock path towards the FPGA (the `CLK_fpga_m` (/M) in the constraint file).
+
 
 ### Using inverted clock with ODELAY
 
+The last presented method uses a mixed technology of the previous two one. For implementation see
+`o_odelay_nclk_p` (/n) ports.
+A special phase shift is used: the output flip-flop driven by the inverted system clock. The clock
+inversion means 50% phase shift, which is 5ns in our case.
 
 
 [1]: https://en.wikipedia.org/wiki/Data_acquisition

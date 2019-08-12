@@ -1,0 +1,16 @@
+{signal: [
+  {name: 'clk', wave: '01...0...1..',  node: '.5......./'},
+  {name: 'odelay_M',                   node: '...q.....p'},
+  {name: 'odelay_m',                   node: '.......1.2'},
+  {name: 'data', wave: 'x..=...x....', node: '...x...y..', data: ["required valid*"] },
+  {name: 'Arrival Time',               node: '.i..j....kr'},
+  {name: 'slack',                      node: '...sl..t..m'},
+  {name: 'data', wave: 'x...=.....x.', node: '....n.....o', data: ["valid**"] },
+
+],
+edge: [
+    '2->1 min', 'p->q MAX', 'q-s', '/-k', '5-i', 'r-o', 'y-t', '3-y', 'l-4', 'i->j MAX', 'k->r min', 'l->s su', 't->m hold'
+],
+foot: {text:
+  ['tspan', '*Required data valid window on FPGA pad.', '**Valid window on FPGA pad.']
+}}

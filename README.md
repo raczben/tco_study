@@ -48,9 +48,9 @@ solution.
 This chapter is optional. You can jump to the next section, you just need to accept the minimum
 `odelay_m = 3.0` and the maximum `odelay_M = 8.0` output delays.
 
-Altera has a quite good [cookbook][2] how to calculate timing. (Note, that all constraints can be
-used for Xilinx's tools too.) The following picture is from that book. Chip-to-Chip Design with
-Virtual Clocks as Input/Output Ports:
+Altera has a quite good [cookbook][2] about timing issues. Or the Xilinx's [Ultrafast design
+methodology][3] can heps to calculate timing. The following picture is from that book. Chip-to-Chip
+Design with Virtual Clocks as Input/Output Ports:
 
 ![Timing overview of synchronous devices](doc_resources/altera_timing_blockdiagram_small.png)
 
@@ -210,8 +210,9 @@ The hold slacks:
 
 Till this point we haven't glaced at the detailed timing. Can these hard timing requirements be
 fulfiller at all? What is the real problem? The timing analizer expects all data at the next clock
-edge from the launch clock by default. The following waveform shows the required data valid window
-on the FPGA pad. The data must be valid alongside this window.
+edge from the launch clock by default (single cycle). The following waveform shows the required data valid window
+on the FPGA pad. The data must be valid alongside this window. (It is permitted to be valid earlier
+and hold data onward, but during this slack of time the data *must* be valid.)
 
 ![Single-cycle requirement](doc_resources/sc_requirement.svg)
 
@@ -222,7 +223,9 @@ we arrived to multicycle output timing.
 ![Multi-cycle requirement](doc_resources/mc_requirement.svg)
 
 In this case the FPGA doesn't need to be as fast as in the single-cycle mode, but now it should be
-relativly more accurate to hit the whole required valid window.
+relativly more accurate to hit the whole required valid window. What's more the harder thing is to not
+to violate the hold time requirements, in other words to hold data till the end of the required data
+valid window. So we can say that the FPGA have to be "as slow as possible".
 
 To set the multicycle path only the following constraint is needed:
 
@@ -271,7 +274,14 @@ This was 9.4ns, with -2.4 setup slack. So we need to delay ~7ns.
 
 Ultrascale's `ODELAYE3` primitive can delays upto 1.25ns in fixed mode. So a cascaded delay
 structure is needed. But also note that using cascade, additional route delays added, so lets try
-with three cascaded `ODELAYE3` primitive.
+with three cascaded `ODELAYE3` primitive. The cascade instantiation is described in the
+[UltraScale's SelectIO][4] user guide. 
+
+![mc_odelay_hold_timing](doc_resources/mc_odelay_hold_timing.png)
+
+![mc_odelay_setup_timing](doc_resources/mc_odelay_setup_timing.png)
+
+
 
 ### Using phase shifted clock
 
@@ -282,11 +292,23 @@ quasi adds extra delay to the clock path towards the FPGA (the `CLK_fpga_m` (/M)
 ### Using inverted clock with ODELAY
 
 The last presented method uses a mixed technology of the previous two one. For implementation see
-`o_odelay_nclk_p` (/n) ports.
-A special phase shift is used: the output flip-flop driven by the inverted system clock. The clock
-inversion means 50% phase shift, which is 5ns in our case.
+`o_odelay_nclk_p` (/n) ports. A special phase shift is used: the output flip-flop driven by the
+inverted system clock. The clock inversion means 50% phase shift, which is 5ns in our case. added a 
+
+### Sum of multicycle solutions:
+
+![mc_overview_setup](doc_resources/mc_overview_setup.png)
+
+![mc_overview_hold](doc_resources/mc_overview_hold.png)
+
+![mc_overview_setup_02](doc_resources/mc_overview_setup_02.png)
+
+![mc_overview_hold_02](doc_resources/mc_overview_hold_02.png)
+
+
 
 
 [1]: https://en.wikipedia.org/wiki/Data_acquisition
 [2]: https://www.intel.com/content/dam/www/programmable/us/en/pdfs/literature/manual/mnl_timequest_cookbook.pdf
 [3]: https://www.xilinx.com/support/documentation/sw_manuals/xilinx2019_1/ug949-vivado-design-methodology.pdf
+[4]: https://www.xilinx.com/support/documentation/user_guides/ug571-ultrascale-selectio.pdf

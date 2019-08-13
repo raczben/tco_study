@@ -6,28 +6,28 @@ study uses Xilinx's Ultrascale architecture (more precisely the xcku040-ffva1156
 however the metodology is general and can be aplied to any FPGA family.
 
 # The problem
-Todays protocol mostly are *self synchronous*, which are don't need global synchronous behaviour.
-But, in some case we cannot avoid global synchronity. This study shows how can it be achived using
+Todays protocol are mostly *self synchronous*, which don't need global synchronous behaviour.
+However, in some cases we cannot avoid global synchronity. This study shows how can it be achived using
 FPGAs even in hard timing cases.
 
 Let's assume that we want to build a [DAQ][1] (Data-acquisition) unit, which requires precision
-trigger-timing. All module needs the trigger signal at the same time. (We need to assume that
-all module gets the same clock with a given uncereanity.)
+trigger-timing. All modules need the trigger signal at the same time. (We need to assume that
+all modules use the same clock with a given uncereanity.)
 
 # This repository
-This repository contains two Vivado project. (More precisely project creator tcl files.) The first
-project is located in the [singlecycle](singlecycle) directory. This project demonstrate three
-simple trial to met the timing, but the requirements are too hard to achive it, so all outputs are
-fail.
+This repository contains two Vivado projects. (More precisely project creator tcl files.) The first
+project is located in the [singlecycle](singlecycle) directory. This project demonstrates three
+simple experiments to meet the timing, but the requirements are too challenging to fulfill, so all
+output timings fail.
 
-The second project is located in the [multicycle](multicycle) directory. This project demonstrate
-how to meet the timing using multicycle for the output ports. These are working ideas, the timing
-analizer passes.
+The second project is located in the [multicycle](multicycle) directory. This project demonstrates
+how to meet the timing using a *multicycle path* constraint for the output ports. These are successful
+ideas, the design fits with the timing analizer requirements.
 
 ## Build
 
-To build the projects, just open a Vivado (which supports Kintex Ultrascale devices), enter into
-[singlecycle](singlecycle) or [multicycle](multicycle) directory. Then source the project creator
+To build the projects, just open a Vivado (which supports Kintex Ultrascale devices), enter the
+[singlecycle](singlecycle) or [multicycle](multicycle) directory. Then *source* the project creator
 file: `source create_mc_project.tcl`
 
 ![Create the project](doc_resources/open_project.jpg)
@@ -40,23 +40,24 @@ To see timing details click *Open Implemented Desing*.
 
 
 # Details
-Following chapters will walk torough the very basic (and failing) implementation to three working
-solution.
+Following sections will walk you through from the very basic (but failing) implementations to three
+successful solutions.
 
 ## Timing requirements
 
-This chapter is optional. You can jump to the next section, you just need to accept the minimum
+This section is optional. You can skip to the next section, you only need to accept the minimum
 `odelay_m = 3.0` and the maximum `odelay_M = 8.0` output delays.
 
 Altera has a quite good [cookbook][2] about timing issues. Or the Xilinx's [Ultrafast design
-methodology][3] can heps to calculate timing. The following picture is from that book. Chip-to-Chip
+methodology][3] can help to calculate timing. The following picture is from that book. Chip-to-Chip
 Design with Virtual Clocks as Input/Output Ports:
 
 ![Timing overview of synchronous devices](doc_resources/altera_timing_blockdiagram_small.png)
 
-This study deals with only the *B* side, where the FPGA is the signal driver. Here is the output
-timing constraint with beliveable (random) values for the delays. (The *_m denotes the minimum, the
-_M denotes the maximum values)
+This study only deals with the *B* side, where the FPGA is the signal driver.
+
+Here are the output timing constraints with random values for the delays.
+(The `*_m` denotes the minimum, the `*_M` denotes the maximum values)
 
 ```tcl
 # create a 100MHz clock
@@ -98,11 +99,11 @@ So the final numbers for this study are `odelay_M = 8.0` and `odelay_m = 3.0`.
 
 ## Single-cycle failings
 
-First let's show some simple approach, which doesn't need deep FPGA knowledge. Altough, we will see
-that these implementation cannot fulfill these hard timing requirements. And finally we will use
-multicycle constraint in the next chapter.
+First, let's show some simple approaches, which don't need deep FPGA knowledge. Altough, we will see
+that these implementations cannot fulfill these challenging timing requirements. And finally we will use
+a multicycle constraint in the next chapter.
 
-In this chapter all output has the following output delay constraint: (See previous chapter for details)
+In this chapter all outputs have the following output delay constraints: (See previous chapter for details)
 
 ```tcl
 #create the output maximum delay for the data output from the
@@ -115,8 +116,8 @@ set_output_delay -clock clkB_virt -min [expr $odelay_m] [get_ports {<out_ports>}
 
 ### First (native) implementation
 
-This simple variant used in the [singlecycle](singlecycle) desing `o_native_p` (/n) ports. Simple means a
-native, fabric flip-flop output connected to the output buffer) 
+The [singlecycle](singlecycle) desing `o_native_p` (/n) ports demonstrate the simplest version.
+Simple means a native, fabric flip-flop output connected to the output buffer.
 
 ```vhdl
 -- Native
@@ -138,30 +139,29 @@ setup time of the virtual `clkB_virt` clock:
 |-------------|-------------|------------|
 | o_native_p  | -4.421      | 5.777      |
 
-The failing of setup-time means our signal is too slow. Let's try to make it faster!
+The negative setup-slack means our signal is too slow. Let's try to make it faster!
 
 ### Place into IOB
 
-All FPGAs has a dedicated, fast output flip-flop, which placed next to the output buffer. The
+All FPGAs has a dedicated, fast output flip-flop, which is placed next to the output buffer. The
 [singlecycle](singlecycle) project `o_iob_p` (/n) ports demonstrate this solution.
 
-Using Xilinx FPGAs the IOB propery says the compiler to place the give flip-flop in the dedicated,
+Using Xilinx FPGAs the IOB property says the compiler to place the given flip-flop in the dedicated,
 fast output register. This property can be set as the following:
 `set_property IOB TRUE [get_cells <register_name>]`
 
-However, this results a bit closer slack it still fails the timing.
+Altough, this results a bit closer slack it still fails the timing.
 
 | Port name | setup slack | hold slack |
 |-----------|-------------|------------|
 | o_iob_p   | -3.821      | 5.586      |
 
-Let's try dedicated flip-flop.
 
 ### Dedicated DDR flip-flop
 
 Another dedicated flip-flop is located in the IO in modern FPGAs. This is the DDR flip-flop. This
 approach is implemented by the `o_ddr_p` (/n) output porst. An `ODDRE1` device primitive needs to be
-placed to drive DDR data:
+placed in order to drive DDR data:
 
 ```vhdl
 ODDRE1_inst : ODDRE1
@@ -178,14 +178,14 @@ port map (
 ); 
 ```
 
-Note, that to reach the same timing behaviour ve need to modify the output delay constraint. The
-maximum delay should be reduced by the half period of the system clock (ie. 5)
+Note, that to reach the same timing behaviour we need to modify the output delay constraint. The
+maximum delay should be reduced by the half period of the system clock (ie. 5ns)
 
 ```tcl
 set_output_delay -clock clkB_virt -max [expr $odelay_M -5] [get_ports {o_ddr*}]
 ```
 
-In spite of the efforts the timing fails, whats more this method has the worst results:
+In spite of the efforts the timing fails, what's more this method has the worst results:
 
 | Port name | setup slack | hold slack |
 |-----------|-------------|------------|
@@ -193,7 +193,7 @@ In spite of the efforts the timing fails, whats more this method has the worst r
 
 ### Sum of single-cycle
 
-This FPGA is not fast enough to fulfill these timing requirements. The following tables shows all
+This FPGA is not fast enough to fulfill these timing requirements. The following tables show all
 the setup/hold timings:
 
 The setup slacks:
@@ -208,24 +208,24 @@ The hold slacks:
 
 ## Multicycle solutions
 
-Till this point we haven't glaced at the detailed timing. Can these hard timing requirements be
-fulfiller at all? What is the real problem? The timing analizer expects all data at the next clock
-edge from the launch clock by default (single-cycle). The following waveform shows the required data valid window
-on the FPGA pad. The data must be valid alongside this window. (It is permitted to be valid earlier
-and hold data onward, but during this slack of time the data *must* be valid.)
+To understand the root cause of the failed timings we should look under hood, and need to understand
+the timing details. The timing analizer expects all data at the next clock edge from the launch
+clock by default (single-cycle). The following waveform shows the *required data valid window*
+on the FPGA pad. The data must be valid throughout this window. (It is permitted for the signal to
+be valid earlier or keep data even after this window, but during this slack of time the data *must* be valid.)
 
 ![Single-cycle requirement](doc_resources/sc_requirement.svg)
 
-(The destination clock uncereanity and any other delays must be added/substracted to/from odelay_M/m
-to get the puncture valid window, but now these are neglegable.)
+(The destination clock uncerteanity and any other delays must be added/substracted to/from odelay_M/m
+to get the accurate valid window, but now these are negligible.)
 
-Lets see one particular case. (There is no essential difference between previously demostrated
-failing implementation, se let's choose the iob implementation.)
+Let's see one particular case. (There is no essential difference between the previously demostrated
+failing implementation, so let's choose the *iob* type implementation.)
 
 ![valid_and_fpga_sc](doc_resources/valid_and_fpga_sc.svg)
 
 This default (single-cycle) mode requires faster behaviour, which cannot be fulfilled by this FPGA.
-However, the *required valid window* is shorter that the garanteed, real valid data window.
+However, the *required valid window* is shorter that the guaranteed, real valid data window.
 
 The length of the *required valid window* is `req_len = odelay_M - odelay_m = 8 - 3 = 5`
 
@@ -234,14 +234,14 @@ The length of the real valid data window is  `req_len + setup_slack + hold_slack
 So if theese windows can be shifted, the timing could be closed.
 
 In most system-synchronous cases additional fix, and known delays are acceptable. Let's shift the
-data arrives with a whole clock cycle. This one (or more) clock cycle delay called *multicycle path*.
+*required data valid window* with a whole clock cycle. This one (or more) clock cycle delay called *multicycle path*.
 
 ![Multi-cycle requirement](doc_resources/mc_requirement.svg)
 
 In this case the FPGA doesn't need to be as fast as in the single-cycle mode, but now it should be
-relativly more accurate to hit the whole required valid window. What's more the harder thing is to not
-to violate the hold time requirements, in other words to hold data till the end of the required data
-valid window. So we can say that the FPGA have to be "as slow as possible".
+relatively more accurate to hit the whole *required valid window*. What's more, the harder thing is not
+to violate the hold time requirements, in other words, to hold data till the end of the *required data
+valid window*. So we can say that the FPGA has to be "as slow as possible".
 
 To set the multicycle path only the following constraint is needed:
 
@@ -250,15 +250,15 @@ To set the multicycle path only the following constraint is needed:
 set_multicycle_path -to [get_ports o_*] 2
 ```
 
-The following chapters will show different implementation, which can solve this issue. To see more
+The following chapters will show different implementations, which can solve this issue. To see more
 details open project from the [multicycle](multicycle) directory.
 
 
 ### Native multicycle implementation
 
 We have seen that the compiler cannot route as fast as required, but maybe it can solve this
-multicycle path problem. So let's just implement a simple register, and connect to output port, with
-the multicycle constraint. This idea implemented by the `o_native_mc_p` (/n) ports.
+multicycle path problem. So let's just implement a simple register, and connect to output port with
+the multicycle constraint. This idea is implemented by the `o_native_mc_p` (/n) ports.
 
 After a longer compiling the timing fails in this case too.
 
@@ -274,7 +274,7 @@ routing snake:
 ![native_mc_route_in_device_overview](doc_resources/native_mc_route_in_device_overview.png) 
 ![native_mc_route_in_device_zoom](doc_resources/native_mc_route_in_device_zoom.png)
 
-The detailed timing report of this failing path also strange. Here is the setup report, with a more
+The detailed timing report of this failing path is also strange. Here is the setup report, with a more
 than 9ns routing time!
 
 ![native_mc_setup_report](doc_resources/native_mc_setup_report.png)
@@ -283,8 +283,8 @@ But the same routing time in the hold report (which uses the fast model of the F
 
 ![native_mc_hold_report](doc_resources/native_mc_hold_report.png)
 
-So the problem is that the FPGA's routing resources has greater uncerteanity than the constraints
-requires. Note, that in simpler timing requirements you can stop here, because the router will add
+So the problem is that the FPGA's routing resources has greater uncerteanity than what the constraints
+require. Note, that in simpler timing requirements you can stop here, because the router will add a
 proper delay. But now we have to investigate more. Let's try to use dedicated delay elements, which
 called ODELAY.
 
@@ -297,8 +297,8 @@ routing delay of the previous (failed) solution. This was 9.4ns, with -2.4 setup
 to delay ~7ns.
 
 Ultrascale's `ODELAYE3` primitive can delays upto 1.25ns in fixed mode. So a cascaded delay
-structure is needed. But also note that using cascade, additional route delays added, so lets try
-with three cascaded `ODELAYE3` primitive. The cascade instantiation is described in the
+structure is needed to delay ~7ns. But also note that using cascade, additional route delays added,
+so lets try with three cascaded `ODELAYE3` primitive. The cascade instantiation is described in the
 [UltraScale's SelectIO][4] user guide. 
 
 Wow! This is a working solution. The timing meets the requirements:
@@ -307,7 +307,7 @@ Wow! This is a working solution. The timing meets the requirements:
 |-----------|-------------|------------|
 | o_odelay_p| 0.064       | 0.173      |
 
-However, both setup, and hold requirements are tiny. What did happen our great valid window? Let's
+However, both setup and hold slacks are tiny. What happened with our great valid window? Let's
 see again the detailed timing reports (the datapath delays only). 
 
 Slow model (for setup calculations):
@@ -318,12 +318,12 @@ Fast model (for hold calculations):
 
 ![mc_odelay_hold_timing](doc_resources/mc_odelay_hold_timing.png)
 
-The same effect can be read from these numbers, as at native implementation. The FPGA's uncerteanity
-tighten the real valid window. There is big difference between the slow (11.9) and fast (7.198)
-models data delay. Now this unwanted effect isn't strong enough, so the timing could be closed,
-unlike the native implementation.
+The same effect can be read from these numbers, as from the first multicycle implementation. The
+FPGA's uncerteanity tighten the real valid window. There is big difference between the slow (11.9)
+and fast (7.198) models data delay. Now this unwanted effect isn't strong enough, so the timing
+could be closed, unlike the native implementation.
 
-The next two chapters will show more sophisticated working solution.
+The next two chapters will show a more sophisticated solution.
 
 
 ### Using phase shifted clock
@@ -337,17 +337,17 @@ This technique quasi adds extra delay to the clock path towards the FPGA (the `C
 the constraint file). If the value of the `clock_shift` above equals the previously approximated
 ~7ns, the value of the `tco` will be a simple output delay. The ~7ns of the `clock_shift` has to be
 converted to phase for [Xilinx's clock wizzard][5]. `7ns/10ns*360deg = 252deg` The
-[multicycle](multicycle) project uses `240deg (6.6ns)` as phase which gives better result.
+[multicycle](multicycle) project uses `240deg (6.6ns)` as phase which gives better results.
 
 ![mc_shifted_clock_wizz_settings](doc_resources/mc_shifted_clock_wizz_settings.png)
 
-The timing has met again, with better results than the odelay one:
+The timing constraints are met again, with better results than the odelay one:
 
 | Port name            | setup slack | hold slack |
 |----------------------|-------------|------------|
 | o_iob_shifted_clk_p  | 0.662       | 0.928      |
 
-What fat slacks! Both of setup and hold are above half nanosec.
+What great slacks! Both of setup and hold are above half a nanosec.
 
 Two notes for this technique:
 
@@ -355,15 +355,15 @@ Two notes for this technique:
 to this new `shifted_clock`, which requires one (or more to help internal timing) flip-flop. The timing
 requirements of this internal path (from `system_clk` to `shifted_clock`) is auto generated, cause a
 clock generator is used.
- - Maybe a couple of recompilation needed with adjusted phase values, to get the better output
-timings. First we can think if the setup slack is greater than the hold slack, more phase shift
-needed, and vice versa. But it is illusive, because router can add extra internal delay, (as in
-native implementation) which can lead us wrong way.
+ - Maybe a couple of recompilations are needed with adjusted phase values, to get the better output
+timings. First, we can think if the setup slack is greater than the hold slack, more phase shift is
+needed, and vice versa. But it is misleading, because router can add extra internal delay, (as in
+native implementation) which can lead us the wrong way.
 
 
 ### Using inverted clock with ODELAY
 
-The last presented method uses a mixed technology of the previous two one. For implementation see
+The last presented method uses a mixed technology of the previous two. For implementation see
 `o_odelay_nclk_p` (/n) ports. A special phase shift is used: the output flip-flop driven by the
 inverted system clock. The clock inversion means 50% phase shift, which is 5ns in our case. added a 
 

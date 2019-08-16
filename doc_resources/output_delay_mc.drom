@@ -8,6 +8,9 @@
 edge: [
     'a~->x multicycle datapath', 'a~>y', '2->1 min', 'p->q MAX', 'q-x', '/-2', '3-y', 'l-4'
 ],
+  "config" : { "hscale" : 1,
+             skin : "narrow" },
+
 foot: {text:
   ['tspan', '*Required data valid window on FPGA pad.']
 }}

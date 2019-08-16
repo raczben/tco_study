@@ -9,5 +9,8 @@
 ],
 edge: [
     '2->1 min', 'p->q MAX', '/-2', '1-k', 'g-e', 'a-b', 'b->g clock_shift', 'q-i', 'g->i tco'
-]
+],
+  "config" : { "hscale" : 1,
+             skin : "narrow" },
+
 }
